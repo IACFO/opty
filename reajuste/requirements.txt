@@ -1,6 +1,6 @@
 streamlit
 pandas
-gspread
-google-auth
+sqlalchemy
+psycopg2-binary
 plotly
-streamlit-authenticator
+python-dateutil
