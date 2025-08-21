@@ -72,18 +72,24 @@ DB_COLS: List[str] = [COLMAP[c] for c in UI_COLS]
 # ---------------------------
 # Conexão ao banco
 # ---------------------------
+# substitua a função get_engine() por esta
+import os
+
 @st.cache_resource(show_spinner=False)
 def get_engine():
-    # Tenta secrets -> fallback para SQLite local
-    db_url = None
-    try:
-        db_url = st.secrets["db"]["url"]
-    except Exception:
-        pass
+    db_url = os.getenv("DATABASE_URL")
     if not db_url:
-        db_url = "sqlite:///dados.db"
-        st.sidebar.info("Sem db.url nos secrets -> usando SQLite local (dados.db)")
-    engine = create_engine(db_url, pool_pre_ping=True)
+        # fallback: secrets.toml local
+        try:
+            db_url = st.secrets["db"]["url"]
+        except Exception:
+            db_url = None
+    if not db_url:
+        db_url = "sqlite:///dados.db"  # último fallback p/ testes
+        st.sidebar.info("Sem DATABASE_URL/st.secrets -> usando SQLite local (dados.db)")
+    # Render e outros às vezes entregam 'postgres://', troque o prefixo:
+    db_url = db_url.replace("postgres://", "postgresql+psycopg2://")
+    return create_engine(db_url, pool_pre_ping=True)
     return engine
 
 engine = get_engine()
