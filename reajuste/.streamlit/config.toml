@@ -1,0 +1,8 @@
+[server]
+headless = true
+enableWebsocketCompression = true
+enableCORS = false
+port = 8501
+
+[theme]
+base = "light"
