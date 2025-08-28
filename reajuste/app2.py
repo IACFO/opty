@@ -16,6 +16,7 @@ import unicodedata
 from datetime import datetime, date
 from typing import Dict, List
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.express as px  # não usado no dashboard atual; pode remover se quiser
@@ -26,14 +27,13 @@ from dateutil import parser as dateparser
 # ---------------------------
 st.set_page_config(page_title="Reajuste Convênios 2025", layout="wide")
 
-# Diretório de dados (persistente se DATA_DIR apontar para um disco montado)
-DEFAULT_WRITABLE = os.path.join(os.path.dirname(__file__), "data")  # /opt/render/project/src/.../data
+# Diretório de dados com fallback (para Render Free sem Disk)
+DEFAULT_WRITABLE = os.path.join(os.path.dirname(__file__), "data")
 FALLBACKS = [
-    os.getenv("DATA_DIR", "/var/data"),              # tenta Disk (se existir e tiver permissão)
-    DEFAULT_WRITABLE,                                # diretório do app (gravável, mas NÃO persiste entre deploys)
-    "/tmp/data",                                     # sempre gravável (também efêmero)
+    os.getenv("DATA_DIR", "/var/data"),  # tenta Disk, se existir
+    DEFAULT_WRITABLE,                    # pasta do app (efêmero em cloud)
+    "/tmp/data",                         # sempre gravável (efêmero)
 ]
-
 for candidate in FALLBACKS:
     try:
         os.makedirs(candidate, exist_ok=True)
@@ -306,7 +306,6 @@ def row_highlight_style(row):
     Destaque por linha:
       - STATUS = EM ATRASO -> vermelho claro
       - "no prazo" (ou rótulos equivalentes) com DATA PREVISTA <= 90 dias -> amarelo
-    Aceita data em objeto date ou string dd/mm/yyyy.
     """
     status = str(row.get("STATUS", "")).strip().upper()
     dt_prev = pd.to_datetime(row.get("DATA PREVISTA", None), errors="coerce", dayfirst=True)
@@ -386,7 +385,7 @@ if page == "Dashboard":
         mask_no_prazo = mask_no_prazo_labels
     qtd_no_prazo = int(mask_no_prazo.sum())
 
-    # “Em negociação” = no prazo + DATA PREVISTA nos próximos 90 dias
+    # Converte uma única vez para usar em “em negociação” e depois reusar
     dt_prev = pd.to_datetime(dff["DATA PREVISTA"], errors="coerce", dayfirst=True)
     today = pd.Timestamp(date.today())
     delta_days = (dt_prev - today).dt.days
@@ -417,25 +416,53 @@ if page == "Dashboard":
         f"**DATA PREVISTA** em ≤ {DAYS_THRESHOLD} dias"
     )
 
-    # -------- Ordenação + Formatação + Destaque --------
+    # -------- Ordenação + Ícones + Formatação --------
     dff_sorted = (
         dff.sort_values(by=["REGIONAL", "OPERADORA"], kind="stable", na_position="last")
            .reset_index(drop=True)
     )
 
+    # Recalcula máscaras com o DataFrame já ordenado (para alinhar com a tabela)
+    s_sorted = dff_sorted["STATUS"].astype(str).str.strip().str.upper().fillna("")
+    mask_no_prazo_labels_sorted = s_sorted.isin(no_prazo_labels)
+    if int(mask_no_prazo_labels_sorted.sum()) == 0:
+        mask_no_prazo_sorted = ~s_sorted.isin({"REALIZADO", "EM ATRASO", ""})
+    else:
+        mask_no_prazo_sorted = mask_no_prazo_labels_sorted
+
+    dt_prev_sorted = pd.to_datetime(dff_sorted["DATA PREVISTA"], errors="coerce", dayfirst=True)
+    delta_days_sorted = (dt_prev_sorted - today).dt.days
+    mask_soon_sorted = dt_prev_sorted.notna() & (delta_days_sorted >= 0) & (delta_days_sorted <= DAYS_THRESHOLD)
+
+    # Ícones leves (sem Styler)
+    icons = np.where(s_sorted.eq("EM ATRASO"), "🔴",
+             np.where(mask_no_prazo_sorted & mask_soon_sorted, "🟡", ""))
+
     dff_fmt = format_df_for_dashboard(dff_sorted)
+    dff_fmt.insert(0, "⚠", icons)
 
     # Coluna 'id' no final apenas para exibição
     if "id" in dff_fmt.columns:
         col_order = [c for c in dff_fmt.columns if c != "id"] + ["id"]
         dff_fmt = dff_fmt[col_order]
 
-    styled = (
-        dff_fmt.style
-             .apply(row_highlight_style, axis=1)
-             .set_table_styles([{'selector': 'th', 'props': [('font-weight', 'bold')]}])
-    )
-    st.dataframe(styled, use_container_width=True, height=520)
+    # --- Renderização rápida por padrão ---
+    usar_destaque = st.toggle("Realçar linhas (pode ficar lento)", value=False)
+
+    if usar_destaque:
+        styled = (
+            dff_fmt.style
+                 .apply(row_highlight_style, axis=1)
+                 .set_table_styles([{'selector': 'th', 'props': [('font-weight', 'bold')]}])
+        )
+        st.dataframe(styled, use_container_width=True, height=520)
+    else:
+        st.dataframe(dff_fmt, use_container_width=True, height=520)
+        # Cabeçalho em negrito mesmo sem Styler
+        st.markdown(
+            "<style>[data-testid='stDataFrame'] th {font-weight:700 !important;}</style>",
+            unsafe_allow_html=True
+        )
 
 # REGIONAIS – EDIÇÃO
 elif page == "Regionais (editar)":
