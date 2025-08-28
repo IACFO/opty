@@ -3,7 +3,7 @@ name: keepalive
 on:
   schedule:
     - cron: "*/12 * * * *"   # roda a cada 12 minutos (UTC)
-  workflow_dispatch:          # permite rodar manualmente pelo tab "Actions"
+  workflow_dispatch:          # permite rodar manualmente pelo tab "Actions" 
 
 jobs:
   ping:
