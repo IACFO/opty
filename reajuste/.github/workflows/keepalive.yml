@@ -1,8 +1,9 @@
 name: keepalive
+
 on:
   schedule:
-    - cron: "*/12 * * * *"   # a cada 12 minutos
-  workflow_dispatch:        # permite rodar manualmente
+    - cron: "*/12 * * * *"   # roda a cada 12 minutos (UTC)
+  workflow_dispatch:          # permite rodar manualmente pelo tab "Actions"
 
 jobs:
   ping:
@@ -12,5 +13,16 @@ jobs:
         env:
           APP_URL: ${{ secrets.RENDER_APP_URL }}
         run: |
-          # ping no root; Streamlit responde a qualquer path
-          curl -m 10 -sS -o /dev/null -w "%{http_code}\n" "${APP_URL}" || true
+          echo "Pinging $APP_URL ..."
+          # tenta 2 vezes antes de falhar
+          for i in 1 2; do
+            code=$(curl -m 10 -sS -o /dev/null -w "%{http_code}" "$APP_URL")
+            echo "HTTP $code"
+            if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+              echo "OK"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Falhou ao pingar $APP_URL"
+          exit 1
