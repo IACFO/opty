@@ -26,9 +26,22 @@ from dateutil import parser as dateparser
 # ---------------------------
 st.set_page_config(page_title="Reajuste Convênios 2025", layout="wide")
 
-# Diretório de dados (persistente no Render)
-DATA_DIR = os.getenv("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
-os.makedirs(DATA_DIR, exist_ok=True)
+# Diretório de dados (persistente se DATA_DIR apontar para um disco montado)
+DEFAULT_WRITABLE = os.path.join(os.path.dirname(__file__), "data")  # /opt/render/project/src/.../data
+FALLBACKS = [
+    os.getenv("DATA_DIR", "/var/data"),              # tenta Disk (se existir e tiver permissão)
+    DEFAULT_WRITABLE,                                # diretório do app (gravável, mas NÃO persiste entre deploys)
+    "/tmp/data",                                     # sempre gravável (também efêmero)
+]
+
+for candidate in FALLBACKS:
+    try:
+        os.makedirs(candidate, exist_ok=True)
+        DATA_DIR = candidate
+        break
+    except PermissionError:
+        continue
+
 CSV_PATH = os.path.join(DATA_DIR, "dados.csv")
 
 # (opcional) semear dados a partir de um CSV comitado no repo
