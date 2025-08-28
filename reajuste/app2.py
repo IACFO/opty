@@ -19,7 +19,7 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 import streamlit as st
-import plotly.express as px  # não usado no dashboard atual; pode remover se quiser
+import plotly.express as px  # não usado no dashboard atual; pode remover se quise
 from dateutil import parser as dateparser
 
 # ---------------------------
